@@ -1,12 +1,10 @@
-import { Authenticated, GitHubBanner, Refine } from "@refinedev/core";
+import { Authenticated, Refine } from "@refinedev/core";
 import { DevtoolsPanel, DevtoolsProvider } from "@refinedev/devtools";
 import { RefineKbar, RefineKbarProvider } from "@refinedev/kbar";
 
 import {
-  AuthPage,
   ErrorComponent,
   ThemedLayout,
-  ThemedSider,
   useNotificationProvider,
 } from "@refinedev/antd";
 import "@refinedev/antd/dist/reset.css";
@@ -20,28 +18,28 @@ import routerProvider, {
 import { liveProvider } from "@refinedev/supabase";
 import { App as AntdApp } from "antd";
 import { BrowserRouter, Outlet, Route, Routes } from "react-router";
-import { Header } from "./components/header";
+import { Header, Sider } from "./components";
 import { ColorModeContextProvider } from "./contexts/color-mode";
-import {
-  BlogPostCreate,
-  BlogPostEdit,
-  BlogPostList,
-  BlogPostShow,
-} from "./pages/blog-posts";
-import {
-  CategoryCreate,
-  CategoryEdit,
-  CategoryList,
-  CategoryShow,
-} from "./pages/categories";
 import authProvider from "./providers/auth";
 import { dataProvider } from "./providers/data";
 import { supabaseClient } from "./providers/supabase-client";
 
+import { LoginPage } from "./pages/LoginPage";
+import { DashboardPage } from "./pages/DashboardPage";
+import { StudentsListPage } from "./pages/StudentsListPage";
+import { StudentShowPage } from "./pages/StudentShowPage";
+import { CheckinPage } from "./pages/CheckinPage";
+import { CheckinHistoryPage } from "./pages/CheckinHistoryPage";
+
+import {
+  CheckCircleOutlined,
+  DashboardOutlined,
+  TeamOutlined,
+} from "@ant-design/icons";
+
 function App() {
   return (
     <BrowserRouter>
-      <GitHubBanner />
       <RefineKbarProvider>
         <ColorModeContextProvider>
           <AntdApp>
@@ -54,23 +52,25 @@ function App() {
                 notificationProvider={useNotificationProvider}
                 resources={[
                   {
-                    name: "blog_posts",
-                    list: "/blog-posts",
-                    create: "/blog-posts/create",
-                    edit: "/blog-posts/edit/:id",
-                    show: "/blog-posts/show/:id",
+                    name: "dashboard",
+                    list: "/dashboard",
+                    meta: { label: "Dashboard", icon: <DashboardOutlined /> },
+                  },
+                  {
+                    name: "students",
+                    list: "/students",
+                    show: "/students/:id",
                     meta: {
-                      canDelete: true,
+                      label: "Students",
+                      icon: <TeamOutlined />,
                     },
                   },
                   {
-                    name: "categories",
-                    list: "/categories",
-                    create: "/categories/create",
-                    edit: "/categories/edit/:id",
-                    show: "/categories/show/:id",
+                    name: "checkins",
+                    list: "/checkins",
                     meta: {
-                      canDelete: true,
+                      label: "Check-in",
+                      icon: <CheckCircleOutlined />,
                     },
                   },
                 ]}
@@ -87,31 +87,26 @@ function App() {
                         key="authenticated-inner"
                         fallback={<CatchAllNavigate to="/login" />}
                       >
-                        <ThemedLayout
-                          Header={Header}
-                          Sider={(props) => <ThemedSider {...props} fixed />}
-                        >
-                          <Outlet />
-                        </ThemedLayout>
+                        <ThemedLayout Header={Header} Sider={Sider}>
+                            <div style={{ marginLeft: 220, padding: 24 }}>
+                              <Outlet />
+                            </div>
+                          </ThemedLayout>
                       </Authenticated>
                     }
                   >
                     <Route
                       index
-                      element={<NavigateToResource resource="blog_posts" />}
+                      element={<NavigateToResource resource="dashboard" />}
                     />
-                    <Route path="/blog-posts">
-                      <Route index element={<BlogPostList />} />
-                      <Route path="create" element={<BlogPostCreate />} />
-                      <Route path="edit/:id" element={<BlogPostEdit />} />
-                      <Route path="show/:id" element={<BlogPostShow />} />
-                    </Route>
-                    <Route path="/categories">
-                      <Route index element={<CategoryList />} />
-                      <Route path="create" element={<CategoryCreate />} />
-                      <Route path="edit/:id" element={<CategoryEdit />} />
-                      <Route path="show/:id" element={<CategoryShow />} />
-                    </Route>
+                    <Route path="/dashboard" element={<DashboardPage />} />
+                    <Route path="/students" element={<StudentsListPage />} />
+                    <Route path="/students/:id" element={<StudentShowPage />} />
+                    <Route path="/checkins" element={<CheckinPage />} />
+                    <Route
+                      path="/checkins/history"
+                      element={<CheckinHistoryPage />}
+                    />
                     <Route path="*" element={<ErrorComponent />} />
                   </Route>
                   <Route
@@ -124,28 +119,7 @@ function App() {
                       </Authenticated>
                     }
                   >
-                    <Route
-                      path="/login"
-                      element={
-                        <AuthPage
-                          type="login"
-                          formProps={{
-                            initialValues: {
-                              email: "info@refine.dev",
-                              password: "refine-supabase",
-                            },
-                          }}
-                        />
-                      }
-                    />
-                    <Route
-                      path="/register"
-                      element={<AuthPage type="register" />}
-                    />
-                    <Route
-                      path="/forgot-password"
-                      element={<AuthPage type="forgotPassword" />}
-                    />
+                    <Route path="/login" element={<LoginPage />} />
                   </Route>
                 </Routes>
 

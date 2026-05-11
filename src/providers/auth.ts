@@ -39,6 +39,23 @@ const authProvider: AuthProvider = {
       }
 
       if (data?.user) {
+        const { data: adminData } = await supabaseClient
+          .from("admins")
+          .select("id")
+          .eq("email", email)
+          .single();
+
+        if (!adminData) {
+          await supabaseClient.auth.signOut();
+          return {
+            success: false,
+            error: {
+              message: "Access denied",
+              name: "Not an admin user",
+            },
+          };
+        }
+
         return {
           success: true,
           redirectTo: "/",
@@ -193,6 +210,25 @@ const authProvider: AuthProvider = {
           error: {
             message: "Check failed",
             name: "Session not found",
+          },
+          logout: true,
+          redirectTo: "/login",
+        };
+      }
+
+      const { data: adminData } = await supabaseClient
+        .from("admins")
+        .select("id")
+        .eq("email", session.user.email)
+        .maybeSingle();
+
+      if (!adminData) {
+        await supabaseClient.auth.signOut();
+        return {
+          authenticated: false,
+          error: {
+            message: "Access revoked",
+            name: "Not an admin user",
           },
           logout: true,
           redirectTo: "/login",
