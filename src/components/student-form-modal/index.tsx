@@ -16,7 +16,6 @@ interface StudentFormModalProps {
 }
 
 async function generateStudentId(): Promise<string> {
-  const year = new Date().getFullYear();
   const { data } = await supabaseClient
     .from("students")
     .select("student_id")
@@ -25,12 +24,12 @@ async function generateStudentId(): Promise<string> {
     .maybeSingle();
   let nextNum = 1;
   if (data?.student_id) {
-    const match = data.student_id.match(/(\d+)$/);
+    const match = data.student_id.match(/\d+$/);
     if (match) {
-      nextNum = parseInt(match[1], 10) + 1;
+      nextNum = parseInt(match[0], 10) + 1;
     }
   }
-  return `RCA${year}${String(nextNum).padStart(4, "0")}`;
+  return `RCA${String(nextNum).padStart(3, "0")}`;
 }
 
 export const StudentFormModal: React.FC<StudentFormModalProps> = ({

@@ -30,11 +30,14 @@ import { StudentsListPage } from "./pages/StudentsListPage";
 import { StudentShowPage } from "./pages/StudentShowPage";
 import { CheckinPage } from "./pages/CheckinPage";
 import { CheckinHistoryPage } from "./pages/CheckinHistoryPage";
+import { TermSettingsPage, TermDetailPage, AdminProfilePage } from "./pages";
 
 import {
   CheckCircleOutlined,
   DashboardOutlined,
+  SettingOutlined,
   TeamOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
 
 function App() {
@@ -73,6 +76,22 @@ function App() {
                       icon: <CheckCircleOutlined />,
                     },
                   },
+                  {
+                    name: "terms",
+                    list: "/terms",
+                    meta: {
+                      label: "Term Settings",
+                      icon: <SettingOutlined />,
+                    },
+                  },
+                  {
+                    name: "profile",
+                    list: "/profile",
+                    meta: {
+                      label: "Profile",
+                      icon: <UserOutlined />,
+                    },
+                  },
                 ]}
                 options={{
                   syncWithLocation: true,
@@ -107,6 +126,9 @@ function App() {
                       path="/checkins/history"
                       element={<CheckinHistoryPage />}
                     />
+                    <Route path="/terms" element={<TermSettingsPage />} />
+                    <Route path="/terms/:id" element={<TermDetailPage />} />
+                    <Route path="/profile" element={<AdminProfilePage />} />
                     <Route path="*" element={<ErrorComponent />} />
                   </Route>
                   <Route

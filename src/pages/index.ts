@@ -4,3 +4,6 @@ export { StudentsListPage } from "./StudentsListPage";
 export { StudentShowPage } from "./StudentShowPage";
 export { CheckinPage } from "./CheckinPage";
 export { CheckinHistoryPage } from "./CheckinHistoryPage";
+export { TermSettingsPage } from "./TermSettingsPage";
+export { TermDetailPage } from "./TermDetailPage";
+export { AdminProfilePage } from "./AdminProfilePage";

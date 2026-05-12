@@ -44,7 +44,19 @@ INSERT INTO students (id, full_name, student_id, email, phone, year_of_study, st
   ('a0000000-0000-0000-0000-000000000014', 'Noah Harris',     'RCA2024014', 'noah@rca.edu',    '+1-555-0114', 'Year 3', 'active',   '2026-04-20'),
   ('a0000000-0000-0000-0000-000000000015', 'Olivia Martin',   'RCA2024015', 'olivia@rca.edu',  '+1-555-0115', 'Year 2', 'active',   '2026-05-01');
 
--- === STEP 4: Seed demo check-ins ===
+-- === STEP 4: Seed a demo term ===
+INSERT INTO terms (id, name, is_active) VALUES
+  ('t0000000-0000-0000-0000-000000000001', 'Term 1 2026', true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO term_items (term_id, item_name) VALUES
+  ('t0000000-0000-0000-0000-000000000001', 'Basket'),
+  ('t0000000-0000-0000-0000-000000000001', 'Papers'),
+  ('t0000000-0000-0000-0000-000000000001', 'Towel'),
+  ('t0000000-0000-0000-0000-000000000001', 'Pen'),
+  ('t0000000-0000-0000-0000-000000000001', 'Calculator');
+
+-- === STEP 5: Seed demo check-ins ===
 INSERT INTO checkins (student_id, checked_in_at, session_label) VALUES
   ('a0000000-0000-0000-0000-000000000001', CURRENT_TIMESTAMP - INTERVAL '2 hours',  'Morning Exam'),
   ('a0000000-0000-0000-0000-000000000003', CURRENT_TIMESTAMP - INTERVAL '1 hour',   'Morning Exam'),

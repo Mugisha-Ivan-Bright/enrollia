@@ -1,11 +1,11 @@
-import { useCreate, useDelete, useInvalidate, useList } from "@refinedev/core";
+import { useEffect, useMemo, useState } from "react";
 import {
   Avatar,
-  Button,
   Card,
+  Checkbox,
   Col,
+  Empty,
   Input,
-  Popconfirm,
   Row,
   Select,
   Space,
@@ -18,121 +18,234 @@ import {
   CheckCircleOutlined,
   CheckOutlined,
   SearchOutlined,
-  UndoOutlined,
 } from "@ant-design/icons";
-import { useEffect, useState, useRef, useCallback } from "react";
-import dayjs from "dayjs";
 import { supabaseClient } from "../providers/supabase-client";
 
 const { Text } = Typography;
 
-const sessionColors: Record<string, string> = {
-  "Morning Exam": "blue",
-  "Afternoon Exam": "orange",
-  "Evening Exam": "purple",
-  General: "#00A896",
-};
-
 export const CheckinPage: React.FC = () => {
-  const invalidate = useInvalidate();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sessionLabel, setSessionLabel] = useState("General");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [checkingIn, setCheckingIn] = useState<string | null>(null);
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [terms, setTerms] = useState<any[]>([]);
+  const [selectedTermId, setSelectedTermId] = useState<string | null>(null);
+  const [selectedTerm, setSelectedTerm] = useState<any>(null);
+  const [termItems, setTermItems] = useState<any[]>([]);
+  const [students, setStudents] = useState<any[]>([]);
+  const [checkins, setCheckins] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
 
-  const { mutate: createCheckin } = useCreate({});
-  const { mutate: deleteCheckin } = useDelete({});
-
-  const { result: todayResult } = useList({
-    resource: "checkins",
-    filters: [
-      { field: "checked_in_at", operator: "gte", value: dayjs().startOf("day").toISOString() },
-    ],
-    sorters: [{ field: "checked_in_at", order: "desc" }],
-    meta: { select: "*, students(full_name, student_id, year_of_study, photo_url)" },
-  });
-
-  const todayData = todayResult?.data || [];
-
-  const checkedInIds = new Set(todayData.map((c: any) => c.student_id));
-
-  const handleSearch = useCallback(
-    (value: string) => {
-      setSearchQuery(value);
-      if (searchTimer.current) clearTimeout(searchTimer.current);
-      searchTimer.current = setTimeout(async () => {
-        if (value.length < 2) {
-          setSearchResults([]);
-          return;
-        }
-
-        const { data } = await supabaseClient
-          .from("students")
-          .select("*")
-          .or(`full_name.ilike.%${value}%,student_id.ilike.%${value}%`)
-          .limit(5);
-
-        setSearchResults(data || []);
-      }, 400);
-    },
-    []
-  );
-
-  const handleCheckin = (student: any) => {
-    setCheckingIn(student.id);
-    createCheckin(
-      {
-        resource: "checkins",
-        values: {
-          student_id: student.id,
-          checked_in_at: new Date().toISOString(),
-          session_label: sessionLabel,
-        },
-      },
-      {
-        onSuccess: () => {
-          message.success(`${student.full_name} checked in for ${sessionLabel}`);
-          setSearchResults([]);
-          setSearchQuery("");
-          invalidate({ resource: "checkins", invalidates: ["list"] });
-        },
-        onError: (err: any) => {
-          message.error(err?.message || "Check-in failed");
-        },
-        onSettled: () => setCheckingIn(null),
-      }
-    );
-  };
-
-  const handleUndo = (checkin: any) => {
-    deleteCheckin(
-      { resource: "checkins", id: checkin.id },
-      {
-        onSuccess: () => invalidate({ resource: "checkins", invalidates: ["list"] }),
-      }
-    );
-  };
+  const [search, setSearch] = useState("");
+  const [yearFilter, setYearFilter] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   useEffect(() => {
-    const channel = supabaseClient
-      .channel("checkins_realtime")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "checkins" },
-        () => invalidate({ resource: "checkins", invalidates: ["list"] })
-      )
-      .on(
-        "postgres_changes",
-        { event: "DELETE", schema: "public", table: "checkins" },
-        () => invalidate({ resource: "checkins", invalidates: ["list"] })
-      )
-      .subscribe();
+    supabaseClient
+      .from("terms")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .then(({ data }) => {
+        setTerms(data || []);
+        const active = data?.find((t) => t.is_active);
+        if (active) {
+          setSelectedTermId(active.id);
+          setSelectedTerm(active);
+        }
+      });
+  }, []);
 
-    return () => {
-      supabaseClient.removeChannel(channel);
-    };
-  }, [invalidate]);
+  useEffect(() => {
+    if (!selectedTermId) {
+      setStudents([]);
+      setTermItems([]);
+      setCheckins([]);
+      setSelectedTerm(null);
+      return;
+    }
+
+    setLoading(true);
+    setSelectedTerm(terms.find((t) => t.id === selectedTermId) || null);
+    setSearch("");
+    setYearFilter(null);
+    setStatusFilter(null);
+    setCurrentPage(1);
+
+    Promise.all([
+      supabaseClient.from("term_items").select("*").eq("term_id", selectedTermId).order("item_name"),
+      supabaseClient.from("students").select("*").order("full_name"),
+      supabaseClient.from("checkins").select("*").eq("term_id", selectedTermId),
+    ]).then(([itemsRes, studentsRes, checkinsRes]) => {
+      setTermItems(itemsRes.data || []);
+      setStudents(studentsRes.data || []);
+      setCheckins(checkinsRes.data || []);
+      setLoading(false);
+    });
+  }, [selectedTermId]);
+
+  const checkinMap = useMemo(() => new Map(checkins.map((c) => [c.student_id, c])), [checkins]);
+  const hasNoItems = termItems.length === 0;
+
+  const isCheckedIn = (studentId: string) => {
+    const checkin = checkinMap.get(studentId);
+    if (!checkin) return false;
+    if (hasNoItems) return true;
+    return (checkin.items?.length || 0) > 0;
+  };
+
+  const checkedInCount = hasNoItems
+    ? checkins.length
+    : checkins.filter((c) => (c.items?.length || 0) > 0).length;
+
+  const hasItem = (studentId: string, itemName: string) =>
+    checkinMap.get(studentId)?.items?.includes(itemName) || false;
+
+  const toggleItem = async (student: any, itemName: string, checked: boolean) => {
+    setSaving((prev) => ({ ...prev, [student.id]: true }));
+
+    const existingCheckin = checkinMap.get(student.id);
+    const currentItems: string[] = existingCheckin?.items || [];
+    const newItems = checked
+      ? [...currentItems, itemName]
+      : currentItems.filter((i) => i !== itemName);
+
+    try {
+      if (newItems.length === 0 && existingCheckin) {
+        const { error } = await supabaseClient
+          .from("checkins")
+          .delete()
+          .eq("id", existingCheckin.id);
+        if (error) throw error;
+        setCheckins((prev) => prev.filter((c) => c.id !== existingCheckin.id));
+      } else if (existingCheckin) {
+        const { data, error } = await supabaseClient
+          .from("checkins")
+          .update({ items: newItems })
+          .eq("id", existingCheckin.id)
+          .select()
+          .single();
+        if (error) throw error;
+        setCheckins((prev) => prev.map((c) => (c.id === data.id ? data : c)));
+      } else {
+        const { data, error } = await supabaseClient
+          .from("checkins")
+          .insert({
+            student_id: student.id,
+            items: newItems,
+            term_id: selectedTermId,
+            checked_in_at: new Date().toISOString(),
+            session_label: "General",
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        setCheckins((prev) => [...prev, data]);
+      }
+    } catch (err: any) {
+      message.error(err?.message || "Failed to save");
+    } finally {
+      setSaving((prev) => ({ ...prev, [student.id]: false }));
+    }
+  };
+
+  const toggleCheckin = async (student: any, checkIn: boolean) => {
+    setSaving((prev) => ({ ...prev, [student.id]: true }));
+
+    try {
+      if (checkIn) {
+        const { data, error } = await supabaseClient
+          .from("checkins")
+          .insert({
+            student_id: student.id,
+            items: [],
+            term_id: selectedTermId,
+            checked_in_at: new Date().toISOString(),
+            session_label: "General",
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        setCheckins((prev) => [...prev, data]);
+      } else {
+        const checkin = checkinMap.get(student.id);
+        if (checkin) {
+          await supabaseClient.from("checkins").delete().eq("id", checkin.id);
+          setCheckins((prev) => prev.filter((c) => c.id !== checkin.id));
+        }
+      }
+    } catch (err: any) {
+      message.error(err?.message || "Failed to update");
+    } finally {
+      setSaving((prev) => ({ ...prev, [student.id]: false }));
+    }
+  };
+
+  const filteredStudents = useMemo(
+    () =>
+      students.filter((s) => {
+        if (search) {
+          const q = search.toLowerCase();
+          if (
+            !s.full_name?.toLowerCase().includes(q) &&
+            !s.student_id?.toLowerCase().includes(q)
+          )
+            return false;
+        }
+        if (yearFilter && s.year_of_study !== yearFilter) return false;
+        if (statusFilter === "checked_in" && !isCheckedIn(s.id)) return false;
+        if (statusFilter === "pending" && isCheckedIn(s.id)) return false;
+        return true;
+      }),
+    [students, search, yearFilter, statusFilter]
+  );
+
+  const years = useMemo(() => {
+    const set = new Set(students.map((s) => s.year_of_study));
+    return Array.from(set).sort();
+  }, [students]);
+
+  const itemColumns = hasNoItems
+    ? []
+    : termItems.map((item) => ({
+        title: (
+          <Text style={{ fontSize: 12, color: "#1D3557", fontWeight: 600 }}>
+            {item.item_name}
+          </Text>
+        ),
+        key: `item_${item.id}`,
+        width: 110,
+        align: "center" as const,
+        render: (_: any, record: any) => {
+          const isChecked = hasItem(record.id, item.item_name);
+          return (
+            <Checkbox
+              checked={isChecked}
+              disabled={saving[record.id]}
+              onChange={(e) => toggleItem(record, item.item_name, e.target.checked)}
+            />
+          );
+        },
+      }));
+
+  const noItemColumn = hasNoItems
+    ? [
+        {
+          title: "Check In",
+          key: "checkin",
+          width: 110,
+          align: "center" as const,
+          render: (_: any, record: any) => {
+            const checked = isCheckedIn(record.id);
+            return (
+              <Checkbox
+                checked={checked}
+                disabled={saving[record.id]}
+                onChange={(e) => toggleCheckin(record, e.target.checked)}
+              />
+            );
+          },
+        },
+      ]
+    : [];
 
   const columns = [
     {
@@ -143,26 +256,28 @@ export const CheckinPage: React.FC = () => {
     },
     {
       title: "Student",
-      dataIndex: "students",
-      render: (s: any) => (
+      key: "student",
+      width: 280,
+      sorter: (a: any, b: any) => a.full_name?.localeCompare(b.full_name),
+      render: (_: any, record: any) => (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Avatar
             size={36}
-            src={s?.photo_url}
+            src={record.photo_url}
             style={{
-              background: s?.photo_url ? "transparent" : "#E0F5F2",
+              background: record.photo_url ? "transparent" : "#E0F5F2",
               color: "#00A896",
             }}
           >
-            {s?.full_name?.charAt(0)?.toUpperCase() || "?"}
+            {record.full_name?.charAt(0)?.toUpperCase() || "?"}
           </Avatar>
           <div>
             <Text strong style={{ color: "#1D3557" }}>
-              {s?.full_name}
+              {record.full_name}
             </Text>
             <br />
             <Text style={{ fontSize: 12, color: "#6C757D" }}>
-              {s?.student_id}
+              {record.student_id}
             </Text>
           </div>
         </div>
@@ -170,40 +285,35 @@ export const CheckinPage: React.FC = () => {
     },
     {
       title: "Year",
-      dataIndex: "students",
-      render: (s: any) => (
-        <Tag color="#00A896">{s?.year_of_study}</Tag>
+      dataIndex: "year_of_study",
+      width: 90,
+      sorter: (a: any, b: any) => a.year_of_study?.localeCompare(b.year_of_study),
+      render: (y: string) => (
+        <Tag color="#00A896" style={{ borderRadius: 12, margin: 0 }}>
+          {y}
+        </Tag>
       ),
     },
+    ...itemColumns,
+    ...noItemColumn,
     {
-      title: "Session",
-      dataIndex: "session_label",
-      render: (s: string) => (
-        <Tag color={sessionColors[s] || "#00A896"}>{s}</Tag>
-      ),
-    },
-    {
-      title: "Time",
-      dataIndex: "checked_in_at",
-      render: (d: string) => (
-        <Text style={{ color: "#6C757D" }}>
-          {dayjs(d).format("h:mm A")}
-        </Text>
-      ),
-    },
-    {
-      title: "Actions",
-      key: "actions",
-      render: (_: string, r: any) => (
-        <Popconfirm
-          title={`Remove check-in for ${r.students?.full_name}?`}
-          onConfirm={() => handleUndo(r)}
-        >
-          <Button size="small" danger icon={<UndoOutlined />}>
-            Undo
-          </Button>
-        </Popconfirm>
-      ),
+      title: "Status",
+      key: "status",
+      width: 130,
+      align: "center" as const,
+      render: (_: any, record: any) => {
+        if (!isCheckedIn(record.id))
+          return (
+            <Tag style={{ borderRadius: 12, border: "1px solid #D9D9D9", color: "#BFBFBF" }}>
+              Pending
+            </Tag>
+          );
+        return (
+          <Tag color="#00A896" icon={<CheckOutlined />} style={{ borderRadius: 12 }}>
+            Checked in
+          </Tag>
+        );
+      },
     },
   ];
 
@@ -224,27 +334,43 @@ export const CheckinPage: React.FC = () => {
               <CheckCircleOutlined style={{ fontSize: 28 }} />
               <div>
                 <Text style={{ color: "#FFF", fontSize: 13, opacity: 0.85 }}>
-                  Active Session
+                  {selectedTerm ? "Term Selected" : "No term selected"}
                 </Text>
                 <br />
                 <Text strong style={{ color: "#FFF", fontSize: 20 }}>
-                  {sessionLabel}
+                  {selectedTerm?.name || "Select a term to begin"}
                 </Text>
               </div>
             </Space>
           </Col>
           <Col>
-            <Select
-              value={sessionLabel}
-              onChange={setSessionLabel}
-              style={{ width: 180, borderRadius: 8 }}
-              options={[
-                { label: "Morning Exam", value: "Morning Exam" },
-                { label: "Afternoon Exam", value: "Afternoon Exam" },
-                { label: "Evening Exam", value: "Evening Exam" },
-                { label: "General", value: "General" },
-              ]}
-            />
+            <Space size={16}>
+              <Select
+                placeholder="Select term..."
+                value={selectedTermId}
+                onChange={(val) => setSelectedTermId(val)}
+                style={{ width: 220, borderRadius: 8 }}
+                options={terms.map((t) => ({
+                  label: `${t.name}${t.is_active ? " (Active)" : ""}`,
+                  value: t.id,
+                }))}
+                allowClear
+              />
+              <Tag
+                style={{
+                  background: "rgba(255,255,255,0.2)",
+                  border: "none",
+                  borderRadius: 12,
+                  color: "#FFF",
+                  fontSize: 13,
+                  padding: "4px 12px",
+                }}
+              >
+                {loading
+                  ? "..."
+                  : `${checkedInCount} / ${students.length} checked in`}
+              </Tag>
+            </Space>
           </Col>
         </Row>
       </Card>
@@ -253,123 +379,95 @@ export const CheckinPage: React.FC = () => {
         style={{
           borderRadius: 16,
           boxShadow: "0 4px 24px rgba(0,168,150,0.08)",
-          marginBottom: 16,
         }}
+        styles={{ body: { padding: 0 } }}
       >
-        <Input.Search
-          size="large"
-          placeholder="Search student by name or ID..."
-          prefix={<SearchOutlined style={{ color: "#00A896" }} />}
-          style={{ borderRadius: 12, height: 52, borderColor: "#00A896" }}
-          value={searchQuery}
-          onChange={(e) => handleSearch(e.target.value)}
-        />
-        <Text style={{ color: "#ADB5BD", fontSize: 12, display: "block", marginTop: 4 }}>
-          Type at least 2 characters to search
-        </Text>
-
-        {searchResults.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            {searchResults.map((student: any) => {
-              const alreadyChecked = checkedInIds.has(student.id);
-              return (
-                <Card
-                  key={student.id}
-                  hoverable
-                  style={{ borderRadius: 12, marginBottom: 8 }}
-                  styles={{ body: { padding: "16px 20px" } }}
-                >
-                  <Row align="middle" gutter={16}>
-                    <Col>
-                      <Avatar
-                        size={48}
-                        src={student.photo_url}
-                        style={{
-                          background: student.photo_url ? "transparent" : "#E0F5F2",
-                          color: "#00A896",
-                          fontSize: 18,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {student.full_name?.charAt(0)?.toUpperCase() || "?"}
-                      </Avatar>
-                    </Col>
-                    <Col flex="1">
-                      <Text strong style={{ color: "#1D3557", fontSize: 16 }}>
-                        {student.full_name}
-                      </Text>
-                      <br />
-                      <Text style={{ color: "#6C757D", fontSize: 13 }}>
-                        {student.student_id}
-                      </Text>{" "}
-                       <Tag color="#00A896">{student.year_of_study}</Tag>
-                    </Col>
-                    <Col>
-                      {alreadyChecked ? (
-                        <Tag
-                          color="#00A896"
-                          icon={<CheckOutlined />}
-                          style={{ fontSize: 13, padding: "4px 12px" }}
-                        >
-                          Checked in
-                        </Tag>
-                      ) : (
-                        <Button
-                          type="primary"
-                          loading={checkingIn === student.id}
-                          onClick={() => handleCheckin(student)}
-                          style={{
-                            background: "#00A896",
-                            border: "none",
-                            borderRadius: 8,
-                          }}
-                        >
-                          Check In
-                        </Button>
-                      )}
-                    </Col>
-                  </Row>
-                </Card>
-              );
-            })}
+        {!selectedTermId ? (
+          <div style={{ padding: "60px 0" }}>
+            <Empty
+              description={
+                <Space direction="vertical" align="center">
+                  <Text style={{ fontSize: 16, color: "#1D3557" }}>
+                    Select a term to start checking in
+                  </Text>
+                  <Text style={{ color: "#ADB5BD" }}>
+                    Choose a term from the dropdown above to view all students
+                  </Text>
+                </Space>
+              }
+            />
           </div>
+        ) : (
+          <>
+            <div
+              style={{
+                padding: "16px 24px",
+                borderBottom: "1px solid #F0F0F0",
+              }}
+            >
+              <Row gutter={[12, 12]}>
+                <Col xs={24} sm={12} md={8} lg={6}>
+                  <Input
+                    placeholder="Search by name or ID..."
+                    prefix={<SearchOutlined style={{ color: "#ADB5BD" }} />}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    allowClear
+                    style={{ borderRadius: 8 }}
+                  />
+                </Col>
+                <Col xs={12} sm={6} md={4} lg={3}>
+                  <Select
+                    placeholder="Year"
+                    value={yearFilter}
+                    onChange={setYearFilter}
+                    allowClear
+                    style={{ width: "100%" }}
+                    options={years.map((y) => ({ label: y, value: y }))}
+                  />
+                </Col>
+                <Col xs={12} sm={6} md={4} lg={3}>
+                  <Select
+                    placeholder="Status"
+                    value={statusFilter}
+                    onChange={setStatusFilter}
+                    allowClear
+                    style={{ width: "100%" }}
+                    options={[
+                      { label: "Pending", value: "pending" },
+                      { label: "Checked in", value: "checked_in" },
+                    ]}
+                  />
+                </Col>
+              </Row>
+            </div>
+            <Table
+              dataSource={filteredStudents}
+              columns={columns}
+              rowKey="id"
+              loading={loading}
+              pagination={{
+                current: currentPage,
+                pageSize: pageSize,
+                total: filteredStudents.length,
+                onChange: (page, size) => {
+                  setCurrentPage(page);
+                  if (size !== pageSize) setPageSize(size);
+                },
+                showSizeChanger: true,
+                pageSizeOptions: ["10", "25", "50", "100"],
+                showTotal: (total, range) =>
+                  `${range[0]}-${range[1]} of ${total} students`,
+              }}
+              scroll={{ x: 500 + termItems.length * 110 + (hasNoItems ? 110 : 0) }}
+              locale={{
+                emptyText: (
+                  <Empty description="No students match your filters" />
+                ),
+              }}
+            />
+          </>
         )}
-      </Card>
-
-      <Card
-        title={
-          <Space>
-            <Text strong style={{ color: "#1D3557", fontSize: 16 }}>
-              Today's Check-ins
-            </Text>
-            <Tag color="#00A896">{todayData.length} students</Tag>
-          </Space>
-        }
-        extra={
-          <Select
-            placeholder="Filter session"
-            allowClear
-            style={{ width: 140 }}
-            options={[
-              { label: "Morning Exam", value: "Morning Exam" },
-              { label: "Afternoon Exam", value: "Afternoon Exam" },
-              { label: "Evening Exam", value: "Evening Exam" },
-              { label: "General", value: "General" },
-            ]}
-          />
-        }
-        style={{
-          borderRadius: 16,
-          boxShadow: "0 4px 24px rgba(0,168,150,0.08)",
-        }}
-      >
-        <Table
-          dataSource={todayData}
-          columns={columns}
-          rowKey="id"
-          pagination={{ pageSize: 10 }}
-          scroll={{ x: 700 }}
-        />
       </Card>
     </div>
   );

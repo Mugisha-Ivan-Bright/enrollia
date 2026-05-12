@@ -14,7 +14,7 @@ import {
   LogoutOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { useLocation } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import dayjs from "dayjs";
 
 const { Text } = Typography;
@@ -31,6 +31,7 @@ export const Header: React.FC = () => {
   const { data: user } = useGetIdentity<any>();
   const { mutate: logout } = useLogout();
   const location = useLocation();
+  const navigate = useNavigate();
   const [liveDot, setLiveDot] = useState(false);
 
   const pageTitle =
@@ -59,6 +60,7 @@ export const Header: React.FC = () => {
         key: "profile",
         icon: <UserOutlined />,
         label: "My Profile",
+        onClick: () => navigate("/profile"),
       },
       { type: "divider" as const },
       {

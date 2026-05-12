@@ -118,7 +118,6 @@ export const StudentEditDrawer: React.FC<StudentEditDrawerProps> = ({
       open={open}
       onClose={onClose}
       width={560}
-      maskClosable={false}
       maskStyle={{ backdropFilter: "blur(2px)" }}
       styles={{ body: { padding: "24px 28px" } }}
       footer={

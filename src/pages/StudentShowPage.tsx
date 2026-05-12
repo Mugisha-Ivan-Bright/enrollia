@@ -1,4 +1,4 @@
-import { useDelete, useInvalidate, useList } from "@refinedev/core";
+import { useDelete, useInvalidate } from "@refinedev/core";
 import {
   Avatar,
   Badge,
@@ -105,10 +105,13 @@ export const StudentShowPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [termsMap, setTermsMap] = useState<Map<string, string>>(new Map());
+  const [studentCheckins, setStudentCheckins] = useState<any[]>([]);
 
   useEffect(() => {
     if (!id) return;
-    setLoading(true);
+    const isInitial = refreshKey === 0;
+    if (isInitial) setLoading(true);
     supabaseClient
       .from("students")
       .select("*")
@@ -116,24 +119,34 @@ export const StudentShowPage: React.FC = () => {
       .single()
       .then(({ data, error }) => {
         if (error) {
-          console.error("Failed to fetch student:", error);
-          setStudent(null);
+          if (isInitial) setStudent(null);
         } else {
           setStudent(data);
         }
-        setLoading(false);
+        if (isInitial) setLoading(false);
       });
   }, [id, refreshKey]);
 
-  const { result: checkinResult } = useList({
-    resource: "checkins",
-    filters: [{ field: "student_id", operator: "eq", value: id }],
-    sorters: [{ field: "checked_in_at", order: "desc" }],
-    pagination: { pageSize: 200 },
-  });
+  useEffect(() => {
+    supabaseClient.from("terms").select("id, name").then(({ data }) => {
+      const map = new Map<string, string>();
+      (data || []).forEach((t) => map.set(t.id, t.name));
+      setTermsMap(map);
+    });
+  }, []);
 
-  const totalCheckins = checkinResult?.total || 0;
-  const checkinData = checkinResult?.data || [];
+  useEffect(() => {
+    if (!id) return;
+    supabaseClient
+      .from("checkins")
+      .select("*")
+      .eq("student_id", id)
+      .order("checked_in_at", { ascending: false })
+      .then(({ data }) => setStudentCheckins(data || []));
+  }, [id, refreshKey]);
+
+  const totalCheckins = studentCheckins.length;
+  const checkinData = studentCheckins;
 
   const thisMonthCheckins = useMemo(
     () =>
@@ -154,7 +167,7 @@ export const StudentShowPage: React.FC = () => {
       message.error(error.message);
     } else {
       message.success("Check-in removed");
-      invalidate({ resource: "checkins", invalidates: ["list"] });
+      setRefreshKey((k) => k + 1);
     }
   };
 
@@ -170,11 +183,13 @@ export const StudentShowPage: React.FC = () => {
       return;
     }
 
-    const headers = ["Date & Time", "Session", "Student Name"];
+    const headers = ["Date & Time", "Session", "Term", "Items", "Student Name"];
     const rows = data.map((c: any) =>
       [
         dayjs(c.checked_in_at).format("DD/MM/YYYY HH:mm"),
         c.session_label,
+        termsMap.get(c.term_id) || "",
+        `"${(c.items || []).join(", ")}"`,
         `"${c.students?.full_name || ""}"`,
       ].join(",")
     );
@@ -259,6 +274,7 @@ export const StudentShowPage: React.FC = () => {
     ];
 
     for (const c of checkinData) {
+      const termName = termsMap.get(c.term_id);
       items.push({
         color: "#10B981",
         dot: <CheckCircleOutlined style={{ color: "#10B981" }} />,
@@ -266,12 +282,32 @@ export const StudentShowPage: React.FC = () => {
         children: (
           <div>
             <Text strong style={{ color: "#1D3557" }}>
-              Checked In
+              Checked In — {c.session_label}
             </Text>
-            <br />
-            <Text style={{ color: "#6C757D", fontSize: 12 }}>
-              {c.session_label} session
-            </Text>
+            {termName && (
+              <>
+                <br />
+                <Text style={{ color: "#6C757D", fontSize: 12 }}>
+                  Term: {termName}
+                </Text>
+              </>
+            )}
+            {c.items?.length > 0 && (
+              <>
+                <br />
+                <Space size={4} style={{ marginTop: 4 }}>
+                  {c.items.map((item: string) => (
+                    <Tag
+                      key={item}
+                      color="success"
+                      style={{ borderRadius: 12, fontSize: 10, margin: 0 }}
+                    >
+                      {item}
+                    </Tag>
+                  ))}
+                </Space>
+              </>
+            )}
           </div>
         ),
       });
@@ -347,6 +383,40 @@ export const StudentShowPage: React.FC = () => {
           {dayjs(v).format("HH:mm A")}
         </Text>
       ),
+    },
+    {
+      title: "Term",
+      dataIndex: "term_id",
+      width: 140,
+      render: (termId: string) => (
+        <Tag
+          color="#00A896"
+          style={{ borderRadius: 12, fontSize: 11, margin: 0 }}
+        >
+          {termsMap.get(termId) || "—"}
+        </Tag>
+      ),
+    },
+    {
+      title: "Items",
+      dataIndex: "items",
+      width: 200,
+      render: (items: string[]) =>
+        items?.length ? (
+          <Space size={4} wrap>
+            {items.map((item) => (
+              <Tag
+                key={item}
+                color="success"
+                style={{ borderRadius: 12, fontSize: 11, margin: 0 }}
+              >
+                {item}
+              </Tag>
+            ))}
+          </Space>
+        ) : (
+          <Text style={{ color: "#ADB5BD", fontSize: 12 }}>—</Text>
+        ),
     },
     {
       title: "Session",
@@ -632,7 +702,10 @@ export const StudentShowPage: React.FC = () => {
               icon={<CheckCircleOutlined />}
               style={{ ...chipStyle, background: "#F0FAF9", color: "#007A6E" }}
             >
-              {totalCheckins} Check-ins
+              {totalCheckins} Check-in{totalCheckins !== 1 ? "s" : ""}
+              {totalCheckins > 0 && new Set(checkinData.filter((c) => c.term_id).map((c) => c.term_id)).size > 0
+                ? ` · ${new Set(checkinData.filter((c) => c.term_id).map((c) => c.term_id)).size} terms`
+                : ""}
             </Tag>
             {lastCheckin && (
               <Tag
@@ -821,30 +894,47 @@ export const StudentShowPage: React.FC = () => {
                             }}
                           />
                         </Col>
-                        <Col span={24}>
-                          <div style={{ marginTop: 8 }}>
-                            <Text
-                              style={{
-                                color: "#6C757D",
-                                fontSize: 12,
-                              }}
-                            >
-                              Last check-in
-                            </Text>
-                            <br />
-                            <Text
-                              style={{
-                                color: "#1D3557",
-                                fontWeight: 500,
-                              }}
-                            >
-                              {lastCheckin
+                        <Col span={12}>
+                          <Statistic
+                            title="Terms Participated"
+                            value={
+                              new Set(
+                                checkinData
+                                  .filter((c: any) => c.term_id)
+                                  .map((c: any) => c.term_id)
+                              ).size
+                            }
+                            prefix={
+                              <BookOutlined
+                                style={{ color: "#1D3557" }}
+                              />
+                            }
+                            valueStyle={{
+                              color: "#1D3557",
+                              fontSize: 24,
+                            }}
+                          />
+                        </Col>
+                        <Col span={12}>
+                          <Statistic
+                            title="Last Check-in"
+                            value={
+                              lastCheckin
                                 ? dayjs(lastCheckin.checked_in_at).format(
-                                    "DD MMM YYYY · HH:mm"
+                                    "DD MMM"
                                   )
-                                : "No check-ins yet"}
-                            </Text>
-                          </div>
+                                : "—"
+                            }
+                            prefix={
+                              <ClockCircleOutlined
+                                style={{ color: "#6C757D" }}
+                              />
+                            }
+                            valueStyle={{
+                              color: "#1D3557",
+                              fontSize: 24,
+                            }}
+                          />
                         </Col>
                       </Row>
                     </Card>

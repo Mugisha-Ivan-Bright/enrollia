@@ -5,6 +5,7 @@ import {
   TeamOutlined,
   CheckCircleOutlined,
   HistoryOutlined,
+  SettingOutlined,
   LogoutOutlined,
   LeftOutlined,
   RightOutlined,
@@ -17,6 +18,7 @@ const iconMap: Record<string, React.ReactNode> = {
   Students: <TeamOutlined />,
   "Check-in": <CheckCircleOutlined />,
   History: <HistoryOutlined />,
+  "Term Settings": <SettingOutlined />,
 };
 
 export const Sider: React.FC = () => {
@@ -31,6 +33,7 @@ export const Sider: React.FC = () => {
 
   const items = menuItems
     .filter((item: any) => item.name !== "checkins" || !item.list?.includes("history"))
+    .filter((item: any) => item.name !== "profile")
     .map((item: any) => {
       const label = item.meta?.label || item.name;
       return {

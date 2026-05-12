@@ -58,6 +58,33 @@ ALTER TABLE students ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Admin full access" ON students
   FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
+-- === TERMS TABLE ===
+CREATE TABLE IF NOT EXISTS terms (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name          text NOT NULL,
+  is_active     boolean NOT NULL DEFAULT false,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE terms ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Admin full access" ON terms
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- === TERM ITEMS TABLE ===
+CREATE TABLE IF NOT EXISTS term_items (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  term_id       uuid NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
+  item_name     text NOT NULL,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE term_items ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Admin full access" ON term_items
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
 -- === CHECKINS TABLE ===
 CREATE TABLE IF NOT EXISTS checkins (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -66,12 +93,15 @@ CREATE TABLE IF NOT EXISTS checkins (
   session_label  text NOT NULL DEFAULT 'General'
                  CHECK (session_label IN
                    ('Morning Exam', 'Afternoon Exam', 'Evening Exam', 'General')),
+  term_id        uuid REFERENCES terms(id) ON DELETE SET NULL,
+  items          jsonb DEFAULT '[]'::jsonb,
   created_at     timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_checkins_date    ON checkins(checked_in_at);
 CREATE INDEX IF NOT EXISTS idx_checkins_student ON checkins(student_id);
 CREATE INDEX IF NOT EXISTS idx_checkins_session ON checkins(session_label);
+CREATE INDEX IF NOT EXISTS idx_checkins_term    ON checkins(term_id);
 
 ALTER TABLE checkins ENABLE ROW LEVEL SECURITY;
 
